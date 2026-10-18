@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thread Ops — Protótipo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #04060c;
+    --panel: rgba(10, 18, 32, 0.78);
+    --panel-solid: #0a1220;
+    --line: rgba(0, 240, 255, 0.18);
+    --line-strong: rgba(0, 240, 255, 0.45);
+    --cyan: #00f0ff;
+    --magenta: #ff2bd6;
+    --lime: #7dff6b;
+    --amber: #ffb547;
+    --red: #ff4d6d;
+    --text: #d8f6ff;
+    --muted: #6d8aa3;
+    --glow: 0 0 12px rgba(0, 240, 255, 0.45);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(ellipse at 20% -10%, rgba(255, 43, 214, 0.12), transparent 50%),
+      radial-gradient(ellipse at 90% 110%, rgba(0, 240, 255, 0.12), transparent 50%),
+      linear-gradient(rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+      var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+  }
+
+  /* ---------- Layout ---------- */
+  .app {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr 170px;
+    grid-template-columns: 270px 1fr 340px;
+    grid-template-areas:
+      "top top top"
+      "left center right"
+      "log log log";
+    gap: 10px;
+    padding: 10px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    position: relative;
+    backdrop-filter: blur(6px);
+    box-shadow: inset 0 0 30px rgba(0, 240, 255, 0.04);
+    min-height: 0;
+  }
+  .panel::before, .panel::after {
+    content: "";
+    position: absolute;
+    width: 14px; height: 14px;
+    border-color: var(--cyan);
+    border-style: solid;
+    opacity: .8;
+  }
+  .panel::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; border-radius: 6px 0 0 0; }
+  .panel::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-radius: 0 0 6px 0; }
+  .panel-title {
+    font-family: Orbitron, sans-serif;
+    font-size: 11px;
+    letter-spacing: .18em;
+    color: var(--cyan);
+    text-transform: uppercase;
+    padding: 12px 14px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .panel-title small { color: var(--muted); letter-spacing: .08em; font-family: "JetBrains Mono", monospace; }
+
+  /* ---------- Top bar ---------- */
+  .top {
+    grid-area: top;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 22px;
+  }
+  .brand {
+    font-family: Orbitron, sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: .2em;
+    color: var(--cyan);
+    text-shadow: var(--glow);
+  }
+  .brand span { color: var(--magenta); text-shadow: 0 0 12px rgba(255, 43, 214, .6); }
+  .tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--muted);
+  }
+  .top .spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+  }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--lime);
+    box-shadow: 0 0 10px var(--lime);
+    animation: pulse 1.6s infinite;
+  }
+  .dot.busy { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+  .dot.paused { background: var(--red); box-shadow: 0 0 10px var(--red); animation: none; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .clock { font-family: "JetBrains Mono", monospace; color: var(--muted); }
+
+  /* ---------- Left ---------- */
+  .left { grid-area: left; display: flex; flex-direction: column; overflow: auto; }
+  .section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  label.f {
+    display: block;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  input[type=text], input[type=number] {
+    width: 100%;
+    background: rgba(0, 240, 255, 0.04);
+    border: 1px solid var(--line-strong);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    outline: none;
+  }
+  input:focus { border-color: var(--cyan); box-shadow: var(--glow); }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  .row > div { flex: 1; }
+  .btn {
+    font-family: Orbitron, sans-serif;
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding: 10px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--cyan);
+    background: linear-gradient(180deg, rgba(0,240,255,.18), rgba(0,240,255,.04));
+    color: var(--cyan);
+    cursor: pointer;
+    transition: .15s;
+    width: 100%;
+  }
+  .btn:hover:not(:disabled) { box-shadow: var(--glow); background: rgba(0,240,255,.25); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn.magenta { border-color: var(--magenta); color: var(--magenta); background: linear-gradient(180deg, rgba(255,43,214,.2), rgba(255,43,214,.04)); }
+  .btn.magenta:hover:not(:disabled) { box-shadow: 0 0 12px rgba(255,43,214,.5); }
+  .btn.ghost { border-color: var(--line-strong); color: var(--muted); background: transparent; }
+  .btn.sm { padding: 7px 8px; font-size: 10px; }
+
+  .radar {
+    margin: 14px auto 6px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    position: relative;
+    background:
+      radial-gradient(circle, transparent 30%, rgba(0,240,255,.06) 31%, transparent 32%),
+      radial-gradient(circle, transparent 60%, rgba(0,240,255,.08) 61%, transparent 62%);
+    overflow: hidden;
+  }
+  .radar::before {
+    content: ""; position: absolute; inset: 0;
+    background: conic-gradient(from 0deg, rgba(0,240,255,.45), transparent 25%);
+    animation: sweep 3s linear infinite;
+    opacity: .25;
+  }
+  .radar.active::before { opacity: 1; animation-duration: 1.1s; }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .radar .center {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-family: Orbitron, sans-serif;
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-align: center;
+    color: var(--cyan);
+  }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px;
+    background: rgba(0,240,255,.03);
+  }
+  .stat b {
+    display: block;
+    font-family: Orbitron, sans-serif;
+    font-size: 20px;
+    color: var(--text);
+  }
+  .stat span { font-size: 10px; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+
+  /* ---------- Center (Threads embutido) ---------- */
+  .center { grid-area: center; display: flex; flex-direction: column; overflow: hidden; }
+  .browserbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .browserbar .url {
+    flex: 1;
+    background: rgba(0,0,0,.35);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 5px 12px;
+    color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .live { color: var(--magenta); font-size: 10px; letter-spacing: .15em; }
+  .viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+    margin: 10px;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px var(--line-strong), 0 0 30px rgba(0,240,255,.12);
+  }
+  .scan {
+    position: absolute; left: 0; right: 0; height: 80px;
+    background: linear-gradient(180deg, transparent, rgba(0,240,255,.18), transparent);
+    pointer-events: none;
+    top: -80px;
+    display: none;
+  }
+  .viewport.scanning .scan { display: block; animation: scan 1.8s linear infinite; }
+  @keyframes scan { to { top: 100%; } }
+  .toast {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%) translateY(-60px);
+    background: #0a1220;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    box-shadow: var(--glow);
+    transition: transform .25s;
+    z-index: 5;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .th {
+    height: 100%;
+    overflow: auto;
+    color: #101010;
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+  }
+  .th-head {
+    position: sticky; top: 0;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    padding: 14px 0;
+    text-align: center;
+    font-weight: 600;
+    font-size: 15px;
+    z-index: 2;
+  }
+  .th-tabs { display: flex; justify-content: center; gap: 28px; padding: 10px 0 0; font-size: 13px; color: #999; }
+  .th-tabs span.on { color: #000; border-bottom: 1px solid #000; padding-bottom: 8px; }
+  .th-feed { max-width: 560px; margin: 0 auto; }
+  .th-empty { text-align: center; color: #999; padding: 80px 20px; font-size: 14px; }
+  .th-post {
+    display: flex; gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid #eee;
+    transition: background .3s;
+  }
+  .th-post.reading { background: #e9fdff; }
+  .av {
+    width: 36px; height: 36px; border-radius: 50%;
+    flex-shrink: 0;
+    display: grid; place-items: center;
+    color: #fff; font-weight: 600; font-size: 13px;
+  }
+  .th-post .who { font-weight: 600; font-size: 14px; }
+  .th-post .who small { color: #999; font-weight: 400; margin-left: 6px; }
+  .th-post p { margin: 3px 0 8px; font-size: 14px; line-height: 1.4; }
+  .th-post .acts { display: flex; gap: 18px; color: #555; font-size: 12px; }
+  .th-comments { margin-top: 8px; border-left: 2px solid #eee; padding-left: 10px; }
+  .th-comments div { font-size: 12.5px; color: #333; margin: 4px 0; }
+  .th-comments b { font-weight: 600; }
+
+  /* ---------- Right ---------- */
+  .right { grid-area: right; display: flex; flex-direction: column; overflow: hidden; }
+  .toolbar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .filters { display: flex; gap: 6px; padding: 8px 12px 0; }
+  .chip {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .chip.on { border-color: var(--cyan); color: var(--cyan); }
+  .cands { flex: 1; overflow: auto; padding: 6px 8px; }
+  .cand {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 8px;
+    padding: 9px 8px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: .15s;
+  }
+  .cand:hover { border-color: var(--line); background: rgba(0,240,255,.04); }
+  .cand.checked { border-color: var(--line-strong); background: rgba(0,240,255,.07); }
+  .cand.done { opacity: .55; cursor: default; }
+  .cand.active { border-color: var(--magenta); box-shadow: 0 0 10px rgba(255,43,214,.4); }
+  .box {
+    width: 16px; height: 16px; margin-top: 2px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    display: grid; place-items: center;
+    font-size: 11px; color: var(--bg);
+  }
+  .cand.checked .box { background: var(--cyan); border-color: var(--cyan); box-shadow: var(--glow); }
+  .cand.done .box { background: var(--lime); border-color: var(--lime); }
+  .cand .h { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text); display: flex; gap: 6px; align-items: center; }
+  .badge {
+    font-size: 9px; letter-spacing: .08em;
+    padding: 1px 5px; border-radius: 2px;
+    border: 1px solid;
+  }
+  .badge.autor { color: var(--magenta); border-color: rgba(255,43,214,.5); }
+  .badge.coment { color: var(--amber); border-color: rgba(255,181,71,.5); }
+  .badge.ok { color: var(--lime); border-color: rgba(125,255,107,.5); }
+  .cand .s { color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.35; }
+  .cands .empty { color: var(--muted); text-align: center; padding: 40px 16px; font-family: "JetBrains Mono", monospace; font-size: 12px; line-height: 1.6; }
+  .pager { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
+  .pager button { background: none; border: 1px solid var(--line); color: var(--cyan); border-radius: 3px; padding: 2px 8px; cursor: pointer; }
+  .quota { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+  .quota .lbl { display: flex; justify-content: space-between; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .bar { height: 6px; background: rgba(0,240,255,.08); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--magenta)); box-shadow: var(--glow); transition: width .3s; }
+
+  /* ---------- Log ---------- */
+  .log { grid-area: log; display: flex; flex-direction: column; overflow: hidden; }
+  .log-body {
+    flex: 1; overflow: auto;
+    padding: 8px 14px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .log-body .t { color: var(--muted); margin-right: 10px; }
+  .log-body .info { color: var(--text); }
+  .log-body .ok { color: var(--lime); }
+  .log-body .warn { color: var(--amber); }
+  .log-body .act { color: var(--magenta); }
+  .cursor::after { content: "▋"; color: var(--cyan); animation: pulse 1s infinite; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,240,255,.2); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (max-width: 1100px) {
+    body { overflow: auto; }
+    .app {
+      height: auto;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto 520px 480px 220px;
+      grid-template-areas: "top" "left" "center" "right" "log";
+    }
+    .top { flex-wrap: wrap; padding: 10px 14px; gap: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <header class="panel top">
+    <div class="brand">THREAD<span>//</span>OPS</div>
+    <div class="tag">PROTÓTIPO VISUAL · dados fictícios</div>
+    <div class="spacer"></div>
+    <div class="status-pill"><div class="dot" id="dot"></div><span id="statusTxt">PRONTO · logado como @voce</span></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <!-- Left: controls -->
+  <aside class="panel left">
+    <div class="panel-title">Controle <small>v0.1</small></div>
+    <div class="section">
+      <label class="f" for="terms">Termos de busca</label>
+      <input type="text" id="terms" value="Lula, PT">
+      <div class="row">
+        <div>
+          <label class="f" for="nPosts">Top posts</label>
+          <input type="number" id="nPosts" value="10" min="1" max="20">
+        </div>
+        <div>
+          <label class="f" for="limit">Limite/dia</label>
+          <input type="number" id="limit" value="30" min="1" max="50">
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnSearch">▶ Buscar</button>
+      </div>
+      <div class="row">
+        <button class="btn ghost sm" id="btnPause">❚❚ Pausar</button>
+      </div>
+    </div>
+    <div class="section">
+      <div class="radar" id="radar"><div class="center" id="radarTxt">AGUARDANDO</div></div>
+    </div>
+    <div class="section" style="border-bottom:0">
+      <div class="stats">
+        <div class="stat"><b id="sPosts">0</b><span>posts lidos</span></div>
+        <div class="stat"><b id="sCands">0</b><span>candidatos</span></div>
+        <div class="stat"><b id="sMarked">0</b><span>marcados</span></div>
+        <div class="stat"><b id="sFollowed">0</b><span>seguidos hoje</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Center: embedded Threads -->
+  <main class="panel center">
+    <div class="browserbar">
+      <span>◀ ▶ ⟳</span>
+      <div class="url" id="url">https://www.threads.com/</div>
+      <span class="live">● AO VIVO</span>
+    </div>
+    <div class="viewport" id="viewport">
+      <div class="scan"></div>
+      <div class="toast" id="toast"></div>
+      <div class="th">
+        <div class="th-head">
+          <span id="thTitle">Para você</span>
+          <div class="th-tabs" id="thTabs" style="display:none"><span>Principais</span><span class="on">Recentes</span><span>Perfis</span></div>
+        </div>
+        <div class="th-feed" id="feed">
+          <div class="th-empty">Threads embutido (WebView2).<br>Digite os termos e clique em <b>Buscar</b>.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Right: candidates -->
+  <aside class="panel right">
+    <div class="panel-title">Candidatos <small id="candInfo">—</small></div>
+    <div class="filters">
+      <span class="chip on" data-f="all">Todos</span>
+      <span class="chip" data-f="autor">Autores</span>
+      <span class="chip" data-f="coment">Comentaram</span>
+    </div>
+    <div class="toolbar">
+      <button class="btn ghost sm" id="btnAll" disabled>☑ Marcar página</button>
+      <button class="btn ghost sm" id="btnNone" disabled>☐ Limpar</button>
+    </div>
+    <div class="cands" id="cands">
+      <div class="empty">Nenhum candidato ainda.<br>Autores e comentaristas dos posts aparecem aqui com o que escreveram — você revisa e marca.</div>
+    </div>
+    <div class="pager" id="pager" style="display:none">
+      <button id="prev">◀</button><span id="pageTxt">1/1</span><button id="next">▶</button>
+    </div>
+    <div class="quota">
+      <div class="lbl"><span>LIMITE DIÁRIO</span><span id="quotaTxt">0/30</span></div>
+      <div class="bar"><i id="quotaBar"></i></div>
+      <button class="btn magenta" id="btnFollow" disabled>Seguir marcados (0)</button>
+    </div>
+  </aside>
+
+  <!-- Log -->
+  <section class="panel log">
+    <div class="panel-title">Log de execução <small>salvo em logs/2026-10-17.log</small></div>
+    <div class="log-body" id="log"></div>
+  </section>
+</div>
+
+<script>
+  // ---------- Dados fictícios ----------
+  const colors = ["#e4405f","#7b61ff","#00a884","#ff8a00","#1d9bf0","#c13584","#2b7a78","#d62828","#6a4c93","#3a86ff"];
+  const POSTS = [
+    { u: "ana.ribeiro_", t: "2 min", txt: "Debate de ontem mostrou bem as diferenças entre os projetos. Quem assistiu?", likes: 412, c: [["leo.sants","Assisti! Achei que o Lula foi bem na parte de economia"],["mari.dvs","Ninguém respondeu sobre segurança, decepcionante"]] },
+    { u: "joao.mdev", t: "6 min", txt: "Programa do PT pra educação técnica é o que mais me interessa nessa eleição.", likes: 233, c: [["carol_fn","Concordo, os institutos federais mudaram minha cidade"],["rafa.oli","Promessa é fácil, quero ver cumprir"]] },
+    { u: "bia.costa.rj", t: "9 min", txt: "Não voto no PT de jeito nenhum, mas respeito quem vota. Bora conversar sem briga.", likes: 98, c: [["tiago.pr","Faltou isso nessa eleição: conversa"]] },
+    { u: "pedrohsilva", t: "12 min", txt: "Ato de domingo lotado aqui em BH. Clima muito bom 🔴", likes: 1204, c: [["lu.fernandes","Tava lá! Que energia"],["gui.amaral","Fotos incríveis"],["nanda.qx","Vou no próximo"]] },
+    { u: "camila.rocha", t: "15 min", txt: "Alguém tem o link das propostas completas registradas no TSE?", likes: 57, c: [["dudu.lima","Tá no site de divulgação de candidaturas do TSE"]] },
+    { u: "felipe.ant", t: "19 min", txt: "O Lula falando de salário mínimo hoje cedo. Vale ouvir a entrevista inteira.", likes: 640, c: [["isa.moraes","Melhor parte foi sobre o reajuste"],["bruno.kf","Discurso de sempre"]] },
+    { u: "gabi.n", t: "23 min", txt: "Primeira eleição votando, tô estudando todos os candidatos antes de decidir.", likes: 311, c: [["vini.costa","Faz muito bem!"]] },
+    { u: "marcos.eng", t: "27 min", txt: "Militância do PT no meu bairro distribuindo material hoje, conversaram bem com todo mundo.", likes: 145, c: [["julia.sa","No meu também passaram"]] },
+    { u: "renata.vb", t: "31 min", txt: "Esse algoritmo só me mostra política agora kkkk", likes: 89, c: [["caio.b","Mesma coisa aqui"]] },
+    { u: "henrique_l", t: "36 min", txt: "Pesquisa nova saiu. Diferença apertando na reta final.", likes: 502, c: [["ale.mt","Vai ser voto a voto"],["paty.rs","Ansiosa demais"]] },
+  ];
+
+  // ---------- Estado ----------
+  let cands = [], page = 0, filter = "all", followedToday = 0, paused = false, busy = false;
+  const PER_PAGE = 12;
+  const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const limit = () => Math.max(1, +$("limit").value || 30);
+
+  // ---------- Relógio ----------
+  const now = () => new Date().toLocaleTimeString("pt-BR");
+  setInterval(() => $("clock").textContent = now(), 1000);
+  $("clock").textContent = now();
+
+  // ---------- Log ----------
+  function log(msg, cls = "info") {
+    const el = document.createElement("div");
+    el.innerHTML = `<span class="t">${now()}</span><span class="${cls}">${msg}</span>`;
+    const body = $("log");
+    body.querySelector(".cursor")?.remove();
+    body.appendChild(el);
+    const c = document.createElement("div"); c.className = "cursor";
+    body.appendChild(c);
+    body.scrollTop = body.scrollHeight;
+  }
+  log("Sistema iniciado. WebView2 carregado.", "ok");
+  log("Sessão do Threads detectada: logado como @voce", "ok");
+  log("Aguardando comando…");
+
+  // ---------- Status ----------
+  function setStatus(txt, mode) {
+    $("statusTxt").textContent = txt;
+    $("dot").className = "dot" + (mode ? " " + mode : "");
+    $("radar").classList.toggle("active", mode === "busy");
+  }
+  async function waitIfPaused() { while (paused) await sleep(200); }
+
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1400);
+  }
+
+  // ---------- Busca ----------
+  $("btnSearch").onclick = async () => {
+    if (busy) return;
+    busy = true; $("btnSearch").disabled = true;
+    cands = []; page = 0; renderCands(); updateStats();
+    const terms = $("terms").value.trim() || "Lula";
+    const n = Math.min(POSTS.length, Math.max(1, +$("nPosts").value || 10));
+
+    setStatus("BUSCANDO", "busy"); $("radarTxt").textContent = "VARRENDO";
+    log(`Buscando: "${terms}"`, "act");
+    $("url").textContent = `https://www.threads.com/search?q=${encodeURIComponent(terms)}&filter=recent`;
+    $("thTitle").textContent = `Busca: ${terms}`; $("thTabs").style.display = "flex";
+    $("feed").innerHTML = ""; $("viewport").classList.add("scanning");
+    await sleep(700);
+    log("Aba 'Recentes' aberta. Coletando posts…");
+
+    const seen = new Set();
+    for (let i = 0; i < n; i++) {
+      await waitIfPaused();
+      const p = POSTS[i];
+      const el = document.createElement("div");
+      el.className = "th-post reading";
+      el.innerHTML = `
+        <div class="av" style="background:${colors[i % colors.length]}">${p.u[0].toUpperCase()}</div>
+        <div style="flex:1">
+          <div class="who">${p.u}<small>${p.t}</small></div>
+          <p>${p.txt}</p>
+          <div class="acts"><span>♡ ${p.likes}</span><span>💬 ${p.c.length}</span><span>⟳</span><span>➤</span></div>
+          <div class="th-comments">${p.c.map(c => `<div><b>${c[0]}</b> ${c[1]}</div>`).join("")}</div>
+        </div>`;
+      $("feed").appendChild(el);
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      $("radarTxt").innerHTML = `POST<br>${i + 1}/${n}`;
+      log(`Post ${i + 1}/${n} @${p.u} — lendo autor e ${p.c.length} comentário(s)`);
+      if (!seen.has(p.u)) { seen.add(p.u); cands.push({ h: p.u, kind: "autor", s: p.txt, color: colors[i % colors.length] }); }
+      for (const [h, s] of p.c) if (!seen.has(h)) { seen.add(h); cands.push({ h, kind: "coment", s }); }
+      renderCands(); updateStats();
+      await sleep(550);
+      el.classList.remove("reading");
+    }
+    $("viewport").classList.remove("scanning");
+    $("sPosts").textContent = n;
+    log(`Coleta concluída: ${n} posts · ${cands.length} candidatos. Revise e marque quem seguir.`, "ok");
+    setStatus("AGUARDANDO REVISÃO"); $("radarTxt").textContent = "REVISÃO";
+    busy = false; $("btnSearch").disabled = false;
+    $("btnAll").disabled = $("btnNone").disabled = false;
+  };
+
+  // ---------- Candidatos ----------
+  const visible = () => cands.filter(c => filter === "all" || c.kind === filter);
+  function renderCands() {
+    const list = visible();
+    const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+    page = Math.min(page, pages - 1);
+    const box = $("cands");
+    if (!list.length) {
+      box.innerHTML = `<div class="empty">${cands.length ? "Nenhum candidato neste filtro." : "Nenhum candidato ainda.<br>Autores e comentaristas dos posts aparecem aqui com o que escreveram — você revisa e marca."}</div>`;
+    } else {
+      box.innerHTML = "";
+      list.slice(page * PER_PAGE, (page + 1) * PER_PAGE).forEach(c => {
+        const el = document.createElement("div");
+        el.className = "cand" + (c.checked ? " checked" : "") + (c.done ? " done" : "") + (c.active ? " active" : "");
+        el.innerHTML = `
+          <div class="box">${c.checked || c.done ? "✓" : ""}</div>
+          <div>
+            <div class="h">@${c.h}
+              <span class="badge ${c.kind}">${c.kind === "autor" ? "AUTOR" : "COMENTOU"}</span>
+              ${c.done ? '<span class="badge ok">SEGUINDO</span>' : ""}
+            </div>
+            <div class="s">“${c.s}”</div>
+          </div>`;
+        el.onclick = () => { if (c.done || busy) return; c.checked = !c.checked; renderCands(); updateStats(); };
+        box.appendChild(el);
+      });
+    }
+    $("pager").style.display = list.length > PER_PAGE ? "flex" : "none";
+    $("pageTxt").textContent = `${page + 1}/${pages}`;
+    $("candInfo").textContent = cands.length ? `${cands.length} encontrados` : "—";
+  }
+  $("prev").onclick = () => { if (page > 0) { page--; renderCands(); } };
+  $("next").onclick = () => { page++; renderCands(); };
+  document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => {
+    document.querySelectorAll(".chip").forEach(x => x.classList.remove("on"));
+    ch.classList.add("on"); filter = ch.dataset.f; page = 0; renderCands();
+  });
+  $("btnAll").onclick = () => {
+    visible().slice(page * PER_PAGE, (page + 1) * PER_PAGE).forEach(c => { if (!c.done) c.checked = true; });
+    renderCands(); updateStats();
+    log("Página marcada — revise e desmarque quem não quiser antes de confirmar.", "warn");
+  };
+  $("btnNone").onclick = () => { cands.forEach(c => c.checked = false); renderCands(); updateStats(); };
+
+  function updateStats() {
+    const marked = cands.filter(c => c.checked && !c.done).length;
+    $("sCands").textContent = cands.length;
+    $("sMarked").textContent = marked;
+    $("sFollowed").textContent = followedToday;
+    $("quotaTxt").textContent = `${followedToday}/${limit()}`;
+    $("quotaBar").style.width = Math.min(100, followedToday / limit() * 100) + "%";
+    $("btnFollow").textContent = `Seguir marcados (${marked})`;
+    $("btnFollow").disabled = !marked || busy;
+  }
+  $("limit").oninput = updateStats;
+
+  // ---------- Seguir marcados ----------
+  $("btnFollow").onclick = async () => {
+    const queue = cands.filter(c => c.checked && !c.done);
+    if (!queue.length || busy) return;
+    const room = limit() - followedToday;
+    if (room <= 0) { log("Limite diário atingido. Nada foi feito.", "warn"); return; }
+    if (!confirm(`Seguir ${Math.min(queue.length, room)} perfil(is) marcado(s)?`)) return;
+
+    busy = true; $("btnSearch").disabled = true; updateStats();
+    setStatus("EXECUTANDO", "busy"); $("radarTxt").textContent = "SEGUINDO";
+    log(`Iniciando: ${Math.min(queue.length, room)} perfil(is) na fila.`, "act");
+
+    for (const c of queue) {
+      await waitIfPaused();
+      if (followedToday >= limit()) { log(`Limite diário (${limit()}) atingido — ${queue.filter(x => !x.done).length} ficaram para amanhã.`, "warn"); break; }
+      c.active = true; renderCands();
+      $("url").textContent = `https://www.threads.com/@${c.h}`;
+      $("viewport").classList.add("scanning");
+      log(`Abrindo perfil @${c.h}…`);
+      await sleep(700);
+      toast(`✓ Seguindo @${c.h}`);
+      c.done = true; c.checked = false; c.active = false; followedToday++;
+      log(`Seguiu @${c.h}`, "ok");
+      renderCands(); updateStats();
+      $("viewport").classList.remove("scanning");
+      await sleep(500);
+    }
+    $("url").textContent = `https://www.threads.com/search?q=${encodeURIComponent($("terms").value)}&filter=recent`;
+    busy = false; $("btnSearch").disabled = false; updateStats();
+    setStatus("PRONTO"); $("radarTxt").textContent = "CONCLUÍDO";
+    log("Fila concluída. Registrado em seguidos.log", "ok");
+  };
+
+  // ---------- Pausa ----------
+  $("btnPause").onclick = () => {
+    paused = !paused;
+    $("btnPause").textContent = paused ? "▶ Retomar" : "❚❚ Pausar";
+    if (paused) { setStatus("PAUSADO", "paused"); log("Execução pausada pelo usuário.", "warn"); }
+    else { setStatus(busy ? "EXECUTANDO" : "PRONTO", busy ? "busy" : ""); log("Execução retomada."); }
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,427 @@
+﻿<Window x:Class="ThreadOps.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:models="clr-namespace:ThreadOps.Models"
+        Title="THREAD//OPS" Height="900" Width="1500" MinHeight="680" MinWidth="1150"
+        Background="{StaticResource BgBrush}" WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        FontFamily="Segoe UI" Foreground="{StaticResource TextBrush}">
+
+    <Window.Resources>
+        <!-- Linha de candidato: o próprio CheckBox é a linha inteira -->
+        <Style x:Key="CandidateRow" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Row" BorderThickness="1" BorderBrush="Transparent" CornerRadius="4" Padding="8" Background="Transparent">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="Box" Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,0,0"
+                                        BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="3">
+                                    <TextBlock x:Name="Tick" Text="✓" FontSize="11" Foreground="{StaticResource BgBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                </Border>
+                                <ContentPresenter Grid.Column="1"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+                                <Setter TargetName="Row" Property="Background" Value="#0A00F0FF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource LineStrongBrush}"/>
+                                <Setter TargetName="Row" Property="Background" Value="#1200F0FF"/>
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource CyanBrush}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource CyanBrush}"/>
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Row" Property="Opacity" Value="0.55"/>
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource LimeBrush}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource LimeBrush}"/>
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="CandidateTemplate" DataType="{x:Type models:Candidate}">
+            <CheckBox Style="{StaticResource CandidateRow}" IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanToggle}" Margin="0,1"
+                      ToolTip="{Binding Snippet}" AutomationProperties.Name="{Binding Handle}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Handle, StringFormat=@{0}}" FontFamily="{StaticResource MonoFont}" FontSize="12"/>
+                        <Border x:Name="Badge" BorderThickness="1" CornerRadius="2" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                BorderBrush="#80FF2BD6">
+                            <TextBlock x:Name="BadgeText" Text="AUTOR" FontSize="9" Foreground="{StaticResource MagentaBrush}"/>
+                        </Border>
+                        <Border BorderThickness="1" CornerRadius="2" Padding="4,0" Margin="4,0,0,0" VerticalAlignment="Center"
+                                BorderBrush="#807DFF6B" Visibility="{Binding IsFollowed, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="SEGUINDO" FontSize="9" Foreground="{StaticResource LimeBrush}"/>
+                        </Border>
+                        <Border BorderThickness="1" CornerRadius="2" Padding="4,0" Margin="4,0,0,0" VerticalAlignment="Center"
+                                BorderBrush="#807DFF6B" Visibility="{Binding IsUnfollowed, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="REMOVIDO" FontSize="9" Foreground="{StaticResource LimeBrush}"/>
+                        </Border>
+                        <Button Content="💬 CONVERSAR" Style="{StaticResource GhostButton}" FontSize="9" Padding="5,1" Margin="6,0,0,0"
+                                ToolTip="Abrir conversa a partir deste comentário"
+                                Visibility="{Binding CanChat, Converter={StaticResource BoolToVis}}" Click="ChatButton_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </CheckBox>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Kind}" Value="{x:Static models:CandidateKind.Commenter}">
+                    <Setter TargetName="Badge" Property="BorderBrush" Value="#80FFB547"/>
+                    <Setter TargetName="BadgeText" Property="Text" Value="COMENTOU"/>
+                    <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource AmberBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="{x:Static models:CandidateKind.NonFollower}">
+                    <Setter TargetName="Badge" Property="BorderBrush" Value="#80FF4D6D"/>
+                    <Setter TargetName="BadgeText" Property="Text" Value="NÃO TE SEGUE"/>
+                    <Setter TargetName="BadgeText" Property="Foreground" Value="{StaticResource RedBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ChatTemplate" DataType="{x:Type models:ChatMessage}">
+            <Border x:Name="Bubble" BorderThickness="1" CornerRadius="6" Padding="9,6" Margin="0,4,40,4"
+                    HorizontalAlignment="Left" BorderBrush="{StaticResource LineStrongBrush}" Background="#0D00F0FF">
+                <StackPanel>
+                    <TextBlock x:Name="Who" Text="{Binding Author, StringFormat=@{0}}" FontFamily="{StaticResource MonoFont}"
+                               FontSize="10" Foreground="{StaticResource CyanBrush}"/>
+                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMine}" Value="True">
+                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right"/>
+                    <Setter TargetName="Bubble" Property="Margin" Value="40,4,0,4"/>
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="#80FF2BD6"/>
+                    <Setter TargetName="Bubble" Property="Background" Value="#14FF2BD6"/>
+                    <Setter TargetName="Who" Property="Foreground" Value="{StaticResource MagentaBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LogTemplate" DataType="{x:Type models:LogEntry}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Time, StringFormat=HH:mm:ss}" Foreground="{StaticResource MutedBrush}" Width="70"/>
+                <TextBlock x:Name="Msg" Text="{Binding Message}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Ok}">
+                    <Setter TargetName="Msg" Property="Foreground" Value="{StaticResource LimeBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Warn}">
+                    <Setter TargetName="Msg" Property="Foreground" Value="{StaticResource AmberBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Action}">
+                    <Setter TargetName="Msg" Property="Foreground" Value="{StaticResource MagentaBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Level}" Value="{x:Static models:LogLevel.Error}">
+                    <Setter TargetName="Msg" Property="Foreground" Value="{StaticResource RedBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <Storyboard x:Key="RadarSweep" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="SweepRotate" Storyboard.TargetProperty="Angle"
+                             From="0" To="360" Duration="0:0:3"/>
+        </Storyboard>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="52"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="170"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="270"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="340"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== Barra superior ===== -->
+        <Border Grid.ColumnSpan="3" Style="{StaticResource NeonPanel}">
+            <DockPanel Margin="18,0" LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontFamily="{StaticResource DisplayFont}" FontSize="19"
+                           Foreground="{StaticResource CyanBrush}" Effect="{StaticResource CyanGlow}">
+                    THREAD<Run Foreground="{StaticResource MagentaBrush}">//</Run>OPS
+                </TextBlock>
+                <Border DockPanel.Dock="Left" Margin="18,0,0,0" VerticalAlignment="Center" BorderBrush="{StaticResource LineStrongBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="8,2">
+                    <TextBlock Text="v0.2 · modo supervisionado" Style="{StaticResource PanelSubtitle}"/>
+                </Border>
+                <TextBlock x:Name="ClockText" DockPanel.Dock="Right" Style="{StaticResource PanelSubtitle}" FontSize="12" Margin="22,0,0,0"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="{StaticResource AmberBrush}" Margin="0,0,8,0">
+                        <Ellipse.Effect>
+                            <DropShadowEffect x:Name="StatusGlow" Color="#FFB547" BlurRadius="10" ShadowDepth="0" Opacity="0.9"/>
+                        </Ellipse.Effect>
+                    </Ellipse>
+                    <TextBlock x:Name="StatusText" FontFamily="{StaticResource MonoFont}" FontSize="12" Text="INICIANDO…"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Esquerda: controles ===== -->
+        <Border Grid.Row="1" Grid.Column="0" Margin="0,10,10,0" Style="{StaticResource NeonPanel}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,12,14,9">
+                    <DockPanel>
+                        <TextBlock Text="CONTROLE" Style="{StaticResource PanelTitle}"/>
+                    </DockPanel>
+                </Border>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14,12">
+                        <TextBlock Text="TERMOS DE BUSCA (separe por vírgula)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="TermsBox" Style="{StaticResource NeonInput}" Text="Lula, PT"/>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="TOP POSTS" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="TopPostsBox" Style="{StaticResource NeonInput}" Text="10"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="LIMITE/DIA" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="LimitBox" Style="{StaticResource NeonInput}" Text="30" TextChanged="LimitBox_TextChanged"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Marcado por padrão (segurança). Desmarcar remove o teto diário de seguir/deixar de seguir. -->
+                        <CheckBox x:Name="LimitCheck" Content="APLICAR LIMITE DIÁRIO" IsChecked="True" Margin="0,8,0,0" Cursor="Hand"
+                                  Foreground="{StaticResource MutedBrush}" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                  ToolTip="Marcado: respeita o limite/dia. Desmarcado: sem teto diário (use com cuidado)."
+                                  Checked="LimitCheck_Changed" Unchecked="LimitCheck_Changed"/>
+
+                        <Button x:Name="SearchButton" Content="▶  BUSCAR" Style="{StaticResource NeonButton}" Margin="0,12,0,0"
+                                IsEnabled="False" Click="SearchButton_Click"/>
+                        <Button x:Name="NonFollowersButton" Content="⇄  QUEM NÃO ME SEGUE" Style="{StaticResource NeonButton}" Margin="0,8,0,0"
+                                IsEnabled="False" Click="NonFollowersButton_Click"
+                                ToolTip="Lê suas listas Seguidores/Seguindo e mostra quem você segue mas não te segue de volta"/>
+                        <UniformGrid Columns="2" Margin="0,8,0,0">
+                            <Button x:Name="PauseButton" Content="❚❚  PAUSAR" Style="{StaticResource GhostButton}" Margin="0,0,4,0"
+                                    Click="PauseButton_Click"/>
+                            <Button x:Name="StopButton" Content="■  PARAR" Style="{StaticResource GhostButton}" Margin="4,0,0,0"
+                                    IsEnabled="False" Click="StopButton_Click"/>
+                        </UniformGrid>
+                        <Button x:Name="HomeButton" Content="⌂  INÍCIO DO THREADS" Style="{StaticResource GhostButton}" Margin="0,8,0,0"
+                                Click="HomeButton_Click"/>
+
+                        <!-- Radar -->
+                        <Grid Width="140" Height="140" Margin="0,18,0,12">
+                            <Ellipse Stroke="{StaticResource LineStrongBrush}" StrokeThickness="1"/>
+                            <Ellipse Margin="22" Stroke="{StaticResource LineBrush}" StrokeThickness="1"/>
+                            <Ellipse Margin="46" Stroke="{StaticResource LineBrush}" StrokeThickness="1"/>
+                            <Path x:Name="Sweep" Opacity="0.25" RenderTransformOrigin="0.5,0.5"
+                                  Data="M70,70 L70,0 A70,70 0 0 1 130.6,35 Z">
+                                <Path.Fill>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#9900F0FF" Offset="0"/>
+                                        <GradientStop Color="#0000F0FF" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Path.Fill>
+                                <Path.RenderTransform>
+                                    <RotateTransform x:Name="SweepRotate"/>
+                                </Path.RenderTransform>
+                            </Path>
+                            <TextBlock x:Name="RadarText" Text="AGUARDANDO" FontFamily="{StaticResource DisplayFont}" FontSize="11"
+                                       Foreground="{StaticResource CyanBrush}" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Estatísticas -->
+                        <UniformGrid Columns="2">
+                            <Border Style="{StaticResource StatCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="StatPosts" Text="0" Style="{StaticResource StatValue}"/>
+                                    <TextBlock Text="posts lidos" Style="{StaticResource PanelSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource StatCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="StatCandidates" Text="0" Style="{StaticResource StatValue}"/>
+                                    <TextBlock Text="candidatos" Style="{StaticResource PanelSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource StatCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="StatMarked" Text="0" Style="{StaticResource StatValue}"/>
+                                    <TextBlock Text="marcados" Style="{StaticResource PanelSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource StatCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="StatFollowed" Text="0" Style="{StaticResource StatValue}"/>
+                                    <TextBlock Text="seguidos hoje" Style="{StaticResource PanelSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Centro: Threads embutido ===== -->
+        <Border Grid.Row="1" Grid.Column="1" Margin="0,10,10,0" Style="{StaticResource NeonPanel}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="◀" Style="{StaticResource GhostButton}" Padding="8,3" Click="BackButton_Click"/>
+                            <Button Content="⟳" Style="{StaticResource GhostButton}" Padding="8,3" Margin="4,0,10,0" Click="ReloadButton_Click"/>
+                        </StackPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="● AO VIVO" Foreground="{StaticResource MagentaBrush}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <Border Background="#59000000" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="13" Padding="12,4">
+                            <TextBlock x:Name="UrlText" FontFamily="{StaticResource MonoFont}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                       Text="https://www.threads.com/"/>
+                        </Border>
+                    </DockPanel>
+                </Border>
+                <Border Margin="10" BorderBrush="{StaticResource LineStrongBrush}" BorderThickness="1" CornerRadius="4" Padding="1">
+                    <wv2:WebView2 x:Name="Web"/>
+                </Border>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Direita: candidatos ===== -->
+        <Border Grid.Row="1" Grid.Column="2" Margin="0,10,0,0" Style="{StaticResource NeonPanel}">
+            <Grid>
+            <DockPanel x:Name="CandidatesPanel">
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,12,14,9">
+                    <DockPanel>
+                        <TextBlock x:Name="CandidateInfo" DockPanel.Dock="Right" Text="—" Style="{StaticResource PanelSubtitle}"/>
+                        <TextBlock Text="CANDIDATOS" Style="{StaticResource PanelTitle}"/>
+                    </DockPanel>
+                </Border>
+
+                <UniformGrid DockPanel.Dock="Top" Columns="2" Margin="12,10,12,0">
+                    <RadioButton x:Name="TabSearch" Content="BUSCA" GroupName="ListTab" Style="{StaticResource Chip}"
+                                 IsChecked="True" HorizontalContentAlignment="Center" Checked="Tab_Checked"/>
+                    <RadioButton x:Name="TabNonFollowers" Content="NÃO ME SEGUEM" GroupName="ListTab" Style="{StaticResource Chip}"
+                                 Margin="0" Checked="Tab_Checked"/>
+                </UniformGrid>
+
+                <StackPanel x:Name="FilterChips" DockPanel.Dock="Top" Orientation="Horizontal" Margin="12,10,12,0">
+                    <RadioButton Content="Todos" GroupName="Filter" Style="{StaticResource Chip}" IsChecked="True" Tag="all" Checked="Filter_Checked"/>
+                    <RadioButton Content="Autores" GroupName="Filter" Style="{StaticResource Chip}" Tag="autor" Checked="Filter_Checked"/>
+                    <RadioButton Content="Comentaram" GroupName="Filter" Style="{StaticResource Chip}" Tag="coment" Checked="Filter_Checked"/>
+                </StackPanel>
+
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="12,10">
+                    <UniformGrid Columns="2">
+                        <Button x:Name="MarkAllButton" Content="☑  MARCAR VISÍVEIS" Style="{StaticResource GhostButton}" Margin="0,0,4,0"
+                                IsEnabled="False" Click="MarkAllButton_Click"/>
+                        <Button x:Name="ClearButton" Content="☐  LIMPAR" Style="{StaticResource GhostButton}" Margin="4,0,0,0"
+                                IsEnabled="False" Click="ClearButton_Click"/>
+                    </UniformGrid>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,10,12,12">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock x:Name="QuotaText" DockPanel.Dock="Right" Text="0/30" Style="{StaticResource PanelSubtitle}"/>
+                            <TextBlock x:Name="QuotaLabel" Text="LIMITE DIÁRIO" Style="{StaticResource PanelSubtitle}"/>
+                        </DockPanel>
+                        <ProgressBar x:Name="QuotaBar" Style="{StaticResource QuotaBar}" Maximum="30" Value="0" Margin="0,0,0,10"/>
+                        <Button x:Name="FollowButton" Content="SEGUIR MARCADOS (0)" Style="{StaticResource MagentaButton}"
+                                IsEnabled="False" Click="FollowButton_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <Grid>
+                    <ListBox x:Name="CandidateList" ItemTemplate="{StaticResource CandidateTemplate}" Background="Transparent"
+                             BorderThickness="0" Margin="6" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+                    <TextBlock x:Name="EmptyText" Style="{StaticResource PanelSubtitle}" FontSize="12" TextAlignment="Center"
+                               TextWrapping="Wrap" Margin="24" VerticalAlignment="Center" LineHeight="20"
+                               Text="Nenhum candidato ainda. Autores e comentaristas dos posts aparecem aqui com o que escreveram — você revisa e marca."/>
+                </Grid>
+            </DockPanel>
+
+            <!-- Conversa a partir de um comentário -->
+            <DockPanel x:Name="ChatPanel" Visibility="Collapsed">
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,10,14,8">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="◀ VOLTAR" Style="{StaticResource GhostButton}" Padding="7,3"
+                                Click="ChatBackButton_Click"/>
+                        <StackPanel>
+                            <TextBlock Text="CONVERSA" Style="{StaticResource PanelTitle}"/>
+                            <TextBlock x:Name="ChatHandleText" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,8">
+                    <TextBlock x:Name="ChatContextText" Style="{StaticResource PanelSubtitle}" FontSize="11" TextWrapping="Wrap"
+                               MaxHeight="48" TextTrimming="CharacterEllipsis"/>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,10,12,12">
+                    <StackPanel>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <Button x:Name="ChatReadButton" Content="⟳  LER CONVERSA" Style="{StaticResource GhostButton}" Margin="0,0,4,0"
+                                    Click="ChatReadButton_Click"/>
+                            <Button x:Name="ChatSuggestButton" Content="✦  GERAR RESPOSTA" Style="{StaticResource NeonButton}" Margin="4,0,0,0"
+                                    FontSize="10" Padding="8,7" Click="ChatSuggestButton_Click"/>
+                        </UniformGrid>
+                        <TextBlock Text="RASCUNHO (edite à vontade)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox x:Name="ChatDraftBox" Style="{StaticResource NeonInput}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 Height="96" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"/>
+                        <Button x:Name="ChatFillButton" Content="PREENCHER NO THREADS" Style="{StaticResource MagentaButton}" Margin="0,10,0,0"
+                                Click="ChatFillButton_Click"/>
+                        <TextBlock Text="O app só preenche a caixa de resposta. Quem clica em Publicar é você."
+                                   Style="{StaticResource PanelSubtitle}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto" Padding="12,8">
+                    <ItemsControl x:Name="ChatList" ItemTemplate="{StaticResource ChatTemplate}"/>
+                </ScrollViewer>
+            </DockPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===== Log ===== -->
+        <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="0,10,0,0" Style="{StaticResource NeonPanel}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,10,14,8">
+                    <DockPanel>
+                        <TextBlock x:Name="LogFileText" DockPanel.Dock="Right" Style="{StaticResource PanelSubtitle}"/>
+                        <TextBlock Text="LOG DE EXECUÇÃO" Style="{StaticResource PanelTitle}"/>
+                    </DockPanel>
+                </Border>
+                <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto" Padding="14,6">
+                    <ItemsControl x:Name="LogList" ItemTemplate="{StaticResource LogTemplate}"
+                                  FontFamily="{StaticResource MonoFont}" FontSize="12"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

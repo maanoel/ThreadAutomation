@@ -1,0 +1,8 @@
+{
+  "MeuUsuario": "",
+  "Agente": {
+    "Url": "",
+    "HeaderAutorizacao": "",
+    "TimeoutSegundos": 60
+  }
+}
